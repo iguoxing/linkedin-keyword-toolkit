@@ -137,7 +137,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 
 const chineseInput = ref('')
 const industry = ref('')
@@ -150,6 +150,41 @@ const generating = ref(false)
 const messages = ref([])
 const history = ref([])
 const apiMode = ref('free') // 'free', 'custom', 'mock'
+
+// 从 localStorage 恢复 API Key 和模式
+onMounted(() => {
+  const savedKey = localStorage.getItem('lk_toolkit_gemini_key')
+  if (savedKey) {
+    apiKey.value = savedKey
+    apiMode.value = 'free'
+  }
+  const savedEndpoint = localStorage.getItem('lk_toolkit_api_endpoint')
+  if (savedEndpoint) {
+    apiEndpoint.value = savedEndpoint
+  }
+  const savedMode = localStorage.getItem('lk_toolkit_api_mode')
+  if (savedMode) {
+    apiMode.value = savedMode
+  }
+})
+
+// 自动保存 API Key 到 localStorage
+watch(apiKey, (val) => {
+  if (val) {
+    localStorage.setItem('lk_toolkit_gemini_key', val)
+  } else {
+    localStorage.removeItem('lk_toolkit_gemini_key')
+  }
+})
+
+watch(apiEndpoint, (val) => {
+  if (val) localStorage.setItem('lk_toolkit_api_endpoint', val)
+  else localStorage.removeItem('lk_toolkit_api_endpoint')
+})
+
+watch(apiMode, (val) => {
+  localStorage.setItem('lk_toolkit_api_mode', val)
+})
 
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
 
