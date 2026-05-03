@@ -3,15 +3,62 @@
     <h2>✉️ LinkedIn 开发信 AI 改写器</h2>
     <p class="subtitle">输入中文需求，AI 自动生成高转化率英文开发信，附带垃圾邮件风险检测</p>
 
-    <!-- API 设置 -->
-    <div class="api-settings">
-      <label>AI API 配置（可选，留空使用内置模拟模式）：</label>
-      <div class="api-row">
-        <input v-model="apiEndpoint" placeholder="API Endpoint（如 https://api.openai.com/v1/chat/completions）" />
-        <input v-model="apiKey" type="password" placeholder="API Key（可选）" />
-        <button class="btn-link" @click="testAPI">测试连接</button>
+    <!-- 免费 API 快速设置 -->
+    <div class="api-section">
+      <div class="api-tabs">
+        <button class="api-tab" :class="{active: apiMode==='free'}" @click="apiMode='free'">🆓 免费 Gemini API（推荐）</button>
+        <button class="api-tab" :class="{active: apiMode==='custom'}" @click="apiMode='custom'">⚙️ 自定义 API</button>
+        <button class="api-tab" :class="{active: apiMode==='mock'}" @click="apiMode='mock'">📋 模拟模式</button>
       </div>
-      <p v-if="apiStatus" :class="apiStatus.type">{{ apiStatus.msg }}</p>
+
+      <!-- 免费模式 -->
+      <div v-if="apiMode==='free'" class="api-panel free-panel">
+        <div class="free-steps">
+          <div class="step">
+            <span class="step-num">1</span>
+            <div class="step-content">
+              <strong>获取免费 Gemini API Key</strong>
+              <p>访问 <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a>，登录 Google 账号，点击「Create API key」，无需信用卡，完全免费。</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-num">2</span>
+            <div class="step-content">
+              <strong>粘贴 API Key</strong>
+              <div class="key-input-row">
+                <input v-model="apiKey" type="password" placeholder="粘贴你的 Gemini API Key（AIza...）" />
+                <button class="btn-test" @click="testAPI">测试连接</button>
+              </div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-num">3</span>
+            <div class="step-content">
+              <strong>开始使用</strong>
+              <p>测试通过后，直接在下方面板输入需求，点击「生成开发信」即可。</p>
+            </div>
+          </div>
+        </div>
+        <p v-if="apiStatus" :class="apiStatus.type" class="api-msg">{{ apiStatus.msg }}</p>
+        <div class="free-info">
+          💡 Gemini 免费额度：每分钟 15 次请求，每天 1500 次，完全够用。
+        </div>
+      </div>
+
+      <!-- 自定义模式 -->
+      <div v-if="apiMode==='custom'" class="api-panel">
+        <div class="api-row">
+          <input v-model="apiEndpoint" placeholder="API Endpoint（OpenAI 兼容格式）" />
+          <input v-model="apiKey" type="password" placeholder="API Key（可选）" />
+          <button class="btn-link" @click="testAPI">测试连接</button>
+        </div>
+        <p v-if="apiStatus" :class="apiStatus.type" class="api-msg">{{ apiStatus.msg }}</p>
+      </div>
+
+      <!-- 模拟模式 -->
+      <div v-if="apiMode==='mock'" class="api-panel mock-panel">
+        <p class="mock-info">⚠️ 当前为模拟模式，生成的是内置英文模板，仅供参考。请使用「免费 Gemini API」获取真实 AI 生成效果。</p>
+      </div>
     </div>
 
     <!-- 输入区域 -->
@@ -78,7 +125,7 @@
       </div>
     </div>
 
-    <!-- 提示词历史 -->
+    <!-- 历史记录 -->
     <div v-if="history.length" class="history-section">
       <h3>📜 历史记录</h3>
       <div v-for="(h, idx) in history" :key="idx" class="history-item" @click="loadHistory(h)">
@@ -102,13 +149,17 @@ const apiStatus = ref(null)
 const generating = ref(false)
 const messages = ref([])
 const history = ref([])
+const apiMode = ref('free') // 'free', 'custom', 'mock'
+
+const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
 
 const SPAM_KEYWORDS = [
   'free', 'guaranteed', 'no obligation', 'act now', 'limited time',
   'cash', 'money', 'income', 'earn extra', 'work from home',
   'buy now', 'order now', 'click here', 'urgent', 'important',
-  'congratulations', 'winner', 'prize', '!!!', '$$$',
-  'best price', 'cheapest', 'discount', 'promotion', 'offer'
+  'congratulations', 'winner', 'prize', '!!!',
+  'best price', 'cheapest', 'discount', 'promotion', 'offer',
+  '100%', 'no risk', 'risk free', 'special offer', 'limited offer'
 ]
 
 const styleLabel = (style) => {
@@ -138,21 +189,18 @@ const analyzeSpam = (text) => {
     }
   })
 
-  // 全大写检测
   const capsRatio = (text.match(/[A-Z]/g) || []).length / Math.max(text.length, 1)
   if (capsRatio > 0.3) {
     score += 15
     flags.push('过多大写字母')
   }
 
-  // 感叹号检测
   const exclCount = (text.match(/!/g) || []).length
   if (exclCount > 2) {
     score += exclCount * 3
     flags.push(`过多感叹号 (${exclCount}个)`)
   }
 
-  // 长度检测
   if (text.length > 800) {
     score += 10
     flags.push('正文过长（>800字符）')
@@ -161,7 +209,6 @@ const analyzeSpam = (text) => {
     flags.push('正文过短（<100字符）')
   }
 
-  // 链接检测
   if (text.includes('http') || text.includes('www.')) {
     score += 20
     flags.push('包含链接（开发信中建议避免）')
@@ -175,7 +222,7 @@ const analyzeSpam = (text) => {
     analysis = `✅ 低风险（${score}分）：此邮件不太可能被标记为垃圾邮件。保持简洁、个性化。`
   } else if (score <= 50) {
     riskLevel = 'medium'
-    analysis = `⚠️ 中风险（${score}分）：建议修改以下问题：${flags.join('; ')}`
+    analysis = `⚠️ 中风险（${score}分）：建议修改：${flags.join('; ')}`
   } else {
     riskLevel = 'high'
     analysis = `🚨 高风险（${score}分）：极易被标记为垃圾邮件！请修改：${flags.join('; ')}`
@@ -184,13 +231,52 @@ const analyzeSpam = (text) => {
   return { score, riskLevel, analysis, flags }
 }
 
-// 调用 AI API
+// 调用 AI API（支持 Gemini 和 OpenAI 格式）
 const callAI = async (prompt) => {
-  // 如果没有配置 API，使用内置模拟模式
-  if (!apiEndpoint.value) {
+  // 模拟模式
+  if (apiMode.value === 'mock') {
     return simulateAI(prompt)
   }
 
+  // 免费 Gemini 模式
+  if (apiMode.value === 'free') {
+    if (!apiKey.value) throw new Error('请先填入 Gemini API Key（免费获取）')
+    return callGemini(prompt)
+  }
+
+  // 自定义模式
+  if (!apiEndpoint.value) return simulateAI(prompt)
+  return callOpenAI(prompt)
+}
+
+// Gemini API 调用
+const callGemini = async (prompt) => {
+  const url = `${GEMINI_ENDPOINT}?key=${apiKey.value}`
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.8, maxOutputTokens: 1024 }
+  }
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(`Gemini API 错误 ${res.status}: ${JSON.stringify(err)}`)
+  }
+
+  const data = await res.json()
+  if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+    throw new Error('Gemini 返回格式异常：' + JSON.stringify(data))
+  }
+  return data.candidates[0].content.parts[0].text
+}
+
+// OpenAI 兼容格式调用
+const callOpenAI = async (prompt) => {
   const body = {
     model: 'gpt-3.5-turbo',
     messages: [{ role: 'user', content: prompt }],
@@ -213,54 +299,57 @@ const callAI = async (prompt) => {
   return data.choices[0].message.content
 }
 
-// 模拟 AI 生成（内置 fallback）
+// 模拟 AI 生成
 const simulateAI = async (prompt) => {
-  // 模拟网络延迟
-  await new Promise(r => setTimeout(r, 1500))
-  return `[SIMULATED AI OUTPUT]
-请配置真实 AI API 以获得最佳效果。
-当前为模拟模式，生成的内容仅供参考。
-建议填入 OpenAI / Claude / 国内大模型 API endpoint 和 key。`
+  await new Promise(r => setTimeout(r, 1200))
+  return `[模拟模式]
+⚠️ 当前为模拟模式，请使用「免费 Gemini API」获取真实 AI 生成效果。
+
+获取免费 Key：https://aistudio.google.com/apikey
+1. 访问上述链接，登录 Google 账号
+2. 点击「Create API key」
+3. 复制 Key 并粘贴到本页面
+
+完全免费，无需信用卡！`
 }
 
 // 生成单条消息
 const generateSingle = async (style, input, industryVal, roleVal) => {
   const stylePrompt = {
-    direct: '直接高效型：开门见山，快速说明价值，尊重对方时间，邮件长度控制在100词以内。',
-    friendly: '友好亲和型：以共同话题或赞美开头，建立人际关系，自然过渡到商业话题，语气温暖。',
-    value: '价值驱动型：以对方痛点或行业趋势切入，展示专业知识，提供明确价值主张，引导回复。'
+    direct: '直接高效型：开门见山，快速说明价值，尊重对方时间，邮件长度控制在100词以内。使用英语。',
+    friendly: '友好亲和型：以共同话题或赞美开头，建立人际关系，自然过渡到商业话题，语气温暖。使用英语。',
+    value: '价值驱动型：以对方痛点或行业趋势切入，展示专业知识，提供明确价值主张，引导回复。使用英语。'
   }
 
-  const prompt = `你是一位专业的 LinkedIn 外贸开发信专家。请根据以下信息生成一封高转化率的英文开发信。
+  const prompt = `You are a professional LinkedIn外贸开发信 expert. Generate a high-conversion English LinkedIn outreach message.
 
-目标风格：${stylePrompt[style]}
+Target style: ${stylePrompt[style]}
 
-中文需求描述：${input}
-目标行业：${industryVal || '通用'}
-目标角色：${roleVal || '业务负责人'}
+Chinese requirement: ${input}
+Target industry: ${industryVal || 'General'}
+Target role: ${roleVal || 'Business decision maker'}
 
-请按以下格式输出（不要输出其他内容）：
-SUBJECT: [主题行，简洁有力，不超60字符]
+Output format (output ONLY the following, no extra text):
+SUBJECT: [subject line, max 60 chars, avoid spam words]
 BODY:
-[正文，3-5句话，包含个人化开头、价值主张、明确CTA]
+[body text, 3-5 sentences, personalized, with clear CTA]
 
-要求：
-1. 主题行避免垃圾邮件词汇（free, guarantee, !!! 等）
-2. 正文个性化，提及对方公司或行业
-3. CTA 明确但不强硬
-4. 总长度不超过150词`
+Requirements:
+1. No spam words (free, guarantee, !!!, etc.)
+2. Personalized, mention their company or industry
+3. Clear but soft CTA
+4. Max 150 words total`
 
   const output = await callAI(prompt)
 
-  // 解析输出
   const subjectMatch = output.match(/SUBJECT:\s*(.+)/i)
   const bodyMatch = output.match(/BODY:\s*([\s\S]+)/i)
 
   let subject = subjectMatch ? subjectMatch[1].trim() : `Partnership Opportunity - ${industryVal || 'Business'}`
   let body = bodyMatch ? bodyMatch[1].trim() : output.replace(/SUBJECT:.*\n?/i, '').trim()
 
-  // 如果是模拟模式，生成更真实的内容
-  if (!apiEndpoint.value) {
+  // 模拟模式使用内置模板
+  if (apiMode.value === 'mock' || (apiMode.value === 'free' && !apiKey.value)) {
     const templates = getTemplates(style, input, industryVal, roleVal)
     subject = templates.subject
     body = templates.body
@@ -297,7 +386,7 @@ Best,
 
 I hope this message finds you well! I've been following ${industry || 'your industry'} for a while and really admired what you've built at [Company].
 
-We recently worked with a company facing similar challenges as yours, and the results were fantastic. I thought you might be interested in learning how we could help streamline your [specific pain point].
+We recently worked with a company facing similar challenges as yours, and the results were fantastic. I thought you might be interested in learning how we could help streamline your operations.
 
 No pressure at all – just wanted to introduce myself and see if there's a fit.
 
@@ -310,7 +399,7 @@ Warmly,
 
 Most ${rolePhrase}s we speak with struggle with [common pain point in ${industry || 'this industry'}].
 
-We've developed a solution that's helped over [X] companies address this exact challenge, resulting in [specific measurable outcome].
+We've developed a solution that's helped over 50+ companies address this exact challenge, resulting in 20-30% cost reduction.
 
 I'd love to share a quick case study that's relevant to your situation. Would that be helpful?
 
@@ -340,7 +429,6 @@ const generateMessages = async () => {
       messages.value.push(msg)
     }
 
-    // 保存到历史
     history.value.unshift({
       input: chineseInput.value,
       time: new Date().toLocaleString('zh-CN'),
@@ -376,16 +464,47 @@ const loadHistory = (h) => {
 
 // 测试 API
 const testAPI = async () => {
-  if (!apiEndpoint.value) {
-    apiStatus.value = { type: 'info', msg: 'ℹ️ 未配置 API，将使用内置模拟模式（生成参考模板）' }
-    return
-  }
   try {
     apiStatus.value = { type: 'info', msg: '🔄 测试中...' }
-    const testPrompt = 'Reply with just the word: OK'
+
+    if (apiMode.value === 'mock') {
+      apiStatus.value = { type: 'info', msg: 'ℹ️ 模拟模式无需测试，直接生成即可（使用内置模板）。' }
+      return
+    }
+
+    if (apiMode.value === 'free') {
+      if (!apiKey.value) {
+        apiStatus.value = { type: 'error', msg: '❌ 请先填入 Gemini API Key' }
+        return
+      }
+      // 测试 Gemini
+      const url = `${GEMINI_ENDPOINT}?key=${apiKey.value}`
+      const body = {
+        contents: [{ parts: [{ text: 'Reply with just: OK' }] }],
+        generationConfig: { maxOutputTokens: 10 }
+      }
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        apiStatus.value = { type: 'success', msg: '✅ Gemini API 连接成功！可以生成开发信了。' }
+      } else {
+        const err = await res.json()
+        apiStatus.value = { type: 'error', msg: `❌ 连接失败：${JSON.stringify(err)}` }
+      }
+      return
+    }
+
+    // 自定义模式测试
+    if (!apiEndpoint.value) {
+      apiStatus.value = { type: 'info', msg: 'ℹ️ 未配置 API Endpoint，将使用模拟模式。' }
+      return
+    }
     const body = {
       model: 'gpt-3.5-turbo',
-      messages: [{ role: 'user', content: testPrompt }],
+      messages: [{ role: 'user', content: 'Reply with just: OK' }],
       max_tokens: 5,
     }
     const headers = { 'Content-Type': 'application/json' }
@@ -421,18 +540,137 @@ h2 {
   margin-bottom: 24px;
   font-size: 14px;
 }
-.api-settings {
+
+/* API Section */
+.api-section {
   background: #f8f9fa;
-  padding: 16px;
-  border-radius: 8px;
+  border-radius: 12px;
   margin-bottom: 24px;
+  overflow: hidden;
+  border: 2px solid #e0e0e0;
 }
-.api-settings label {
-  font-weight: 600;
+.api-tabs {
+  display: flex;
+  border-bottom: 2px solid #e0e0e0;
+}
+.api-tab {
+  flex: 1;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
   font-size: 13px;
-  display: block;
-  margin-bottom: 8px;
+  font-weight: 600;
+  color: #666;
+  transition: all 0.2s;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
 }
+.api-tab.active {
+  color: #0a66c2;
+  border-bottom-color: #0a66c2;
+  background: white;
+}
+.api-tab:hover {
+  background: #eee;
+}
+.api-panel {
+  padding: 20px;
+}
+.free-panel {
+  background: white;
+}
+.mock-panel {
+  background: #fff8e1;
+}
+
+/* Free steps */
+.free-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.step-num {
+  width: 28px;
+  height: 28px;
+  background: #0a66c2;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.step-content {
+  flex: 1;
+}
+.step-content strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+.step-content p {
+  font-size: 13px;
+  color: #555;
+  margin: 0;
+  line-height: 1.5;
+}
+.step-content a {
+  color: #0a66c2;
+  text-decoration: none;
+  font-weight: 600;
+}
+.step-content a:hover {
+  text-decoration: underline;
+}
+.key-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.key-input-row input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 2px solid #0a66c2;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.btn-test {
+  background: #0a66c2;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.free-info {
+  background: #e8f5e9;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #2e7d32;
+  line-height: 1.5;
+}
+.mock-info {
+  font-size: 13px;
+  color: #f57f17;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Custom API */
 .api-row {
   display: flex;
   gap: 8px;
@@ -455,9 +693,11 @@ h2 {
   cursor: pointer;
   font-size: 13px;
 }
-.api-settings .success { color: #0a8a2e; font-size: 13px; margin-top: 8px; }
-.api-settings .error { color: #d93025; font-size: 13px; margin-top: 8px; }
-.api-settings .info { color: #666; font-size: 13px; margin-top: 8px; }
+.api-msg.success { color: #2e7d32; font-size: 13px; margin-top: 10px; }
+.api-msg.error { color: #d93025; font-size: 13px; margin-top: 10px; }
+.api-msg.info { color: #666; font-size: 13px; margin-top: 10px; }
+
+/* Input section */
 .input-section {
   background: white;
   padding: 24px;
@@ -515,6 +755,8 @@ textarea:focus {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* Results */
 .results-section {
   margin-bottom: 24px;
 }
@@ -602,6 +844,8 @@ textarea:focus {
 .spam-analysis .low { color: #2e7d32; font-weight: 600; }
 .spam-analysis .medium { color: #f57f17; font-weight: 600; }
 .spam-analysis .high { color: #d93025; font-weight: 600; }
+
+/* History */
 .history-section h3 {
   margin-bottom: 12px;
 }
