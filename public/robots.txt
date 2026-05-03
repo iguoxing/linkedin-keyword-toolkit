@@ -1,0 +1,5 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+
+Sitemap: https://iguoxing.github.io/linkedin-keyword-toolkit/sitemap.xml
