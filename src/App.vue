@@ -21,6 +21,7 @@
     <JobExplorer v-else-if="activeTab==='jobs'" />
   <CompetitorAnalyzer v-else-if="activeTab==='competitor'" />
   <OutreachWriter v-else-if="activeTab==='outreach'" />
+  <ProfileVisiting v-else-if="activeTab==='visiting'" />
 </main>
 </template>
 
@@ -33,6 +34,7 @@ import JDAnalyzer from './components/JDAnalyzer.vue'
 import JobExplorer from './components/JobExplorer.vue'
 import CompetitorAnalyzer from './components/CompetitorAnalyzer.vue'
 import OutreachWriter from './components/OutreachWriter.vue'
+import ProfileVisiting from './components/ProfileVisiting.vue'
 
 const tabs = [
   { id: 'boolean', label: '布尔搜索' },
@@ -42,6 +44,7 @@ const tabs = [
   { id: 'jobs', label: '职位探索' },
   { id: 'competitor', label: '竞品分析' },
   { id: 'outreach', label: '开发信改写' },
+  { id: 'visiting', label: '访客足迹挖掘' },
 ]
 const activeTab = ref('boolean')
 </script>
