@@ -19,8 +19,9 @@
     <ProfileOptimizer v-else-if="activeTab==='profile'" />
     <JDAnalyzer v-else-if="activeTab==='jd'" />
     <JobExplorer v-else-if="activeTab==='jobs'" />
-    <CompetitorAnalyzer v-else-if="activeTab==='competitor'" />
-  </main>
+  <CompetitorAnalyzer v-else-if="activeTab==='competitor'" />
+  <OutreachWriter v-else-if="activeTab==='outreach'" />
+</main>
 </template>
 
 <script setup>
@@ -31,6 +32,7 @@ import ProfileOptimizer from './components/ProfileOptimizer.vue'
 import JDAnalyzer from './components/JDAnalyzer.vue'
 import JobExplorer from './components/JobExplorer.vue'
 import CompetitorAnalyzer from './components/CompetitorAnalyzer.vue'
+import OutreachWriter from './components/OutreachWriter.vue'
 
 const tabs = [
   { id: 'boolean', label: '布尔搜索' },
@@ -39,6 +41,7 @@ const tabs = [
   { id: 'jd', label: 'JD 分析' },
   { id: 'jobs', label: '职位探索' },
   { id: 'competitor', label: '竞品分析' },
+  { id: 'outreach', label: '开发信改写' },
 ]
 const activeTab = ref('boolean')
 </script>
