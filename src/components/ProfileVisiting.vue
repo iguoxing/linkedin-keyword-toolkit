@@ -238,9 +238,193 @@
         <strong>🤖 核心理念：</strong>每天定时、定量访问筛选出的潜客。对方看到提醒 → 产生好奇 → 回访你的主页 → 产生询盘意向。
       </div>
 
-      <h3>📅 每日访问计划</h3>
+      <!-- ===== 自动化执行器 ===== -->
+      <div class="auto-executor" :class="{running: autoRunning}">
+        <h3>🚀 自动化执行器</h3>
+        <p class="section-desc">导入潜客名单 → 启动执行器 → 按设定间隔自动打开下一个潜客主页 → 你只需浏览停留后点「已完成」</p>
 
+        <!-- 执行控制面板 -->
+        <div class="executor-control">
+          <div class="control-main">
+            <!-- 当前状态 -->
+            <div class="current-target" v-if="autoRunning || autoPaused">
+              <div class="target-header">
+                <span class="target-counter">
+                  <strong>{{ visitedToday }} / {{ dailyTarget }}</strong>
+                  <small>今日进度</small>
+                </span>
+                <span class="target-status" :class="{paused: autoPaused}">
+                  {{ autoPaused ? '⏸️ 已暂停' : '⏱️ 自动运行中' }}
+                </span>
+              </div>
+              <!-- 进度条 -->
+              <div class="progress-bar-track">
+                <div class="progress-bar-fill" :style="{width: progressPercent + '%'}"></div>
+              </div>
+              <div class="progress-info">
+                <span>{{ progressPercent }}% 完成</span>
+                <span>剩余 {{ dailyTarget - visitedToday }} 人</span>
+              </div>
+
+              <!-- 当前潜客 -->
+              <div v-if="currentProspect" class="current-prospect-card">
+                <div class="prospect-number">第 {{ visitedToday + 1 }} 位</div>
+                <div class="prospect-name">{{ currentProspect.name || '未命名' }}</div>
+                <div class="prospect-url" v-if="currentProspect.url">
+                  <a :href="currentProspect.url" target="_blank" class="visit-link">🔗 打开 LinkedIn 主页</a>
+                </div>
+              </div>
+
+              <!-- 倒计时 -->
+              <div class="countdown-area" v-if="autoRunning && !autoPaused">
+                <div class="countdown-ring">
+                  <svg viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="45" stroke="#e0e0e0" stroke-width="6" fill="none"/>
+                    <circle cx="50" cy="50" r="45" stroke="#0a66c2" stroke-width="6" fill="none"
+                      stroke-dasharray="283" :stroke-dashoffset="countdownOffset"
+                      stroke-linecap="round" transform="rotate(-90 50 50)"
+                      style="transition: stroke-dashoffset 1s linear;"/>
+                  </svg>
+                  <div class="countdown-text">{{ countdownDisplay }}</div>
+                </div>
+                <div class="countdown-label">下一个提醒倒计时</div>
+              </div>
+            </div>
+
+            <!-- 未启动状态 -->
+            <div v-if="!autoRunning && !autoPaused" class="idle-state">
+              <div class="idle-icon">📋</div>
+              <div class="idle-text">准备就绪，导入潜客名单后启动执行器</div>
+            </div>
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="control-actions">
+            <template v-if="!autoRunning && !autoPaused">
+              <button class="btn-executor start" @click="startAutoExecutor" :disabled="todayQueue.length === 0">
+                ▶️ 启动执行器
+              </button>
+            </template>
+            <template v-else>
+              <button class="btn-executor done" @click="markCurrentDone" v-if="!autoPaused">
+                ✅ 已浏览完成，下一位
+              </button>
+              <button class="btn-executor skip" @click="skipCurrent" v-if="!autoPaused">
+                ⏭️ 跳过此位
+              </button>
+              <button class="btn-executor pause" @click="togglePause" v-if="!autoPaused">
+                ⏸️ 暂停
+              </button>
+              <button class="btn-executor resume" @click="togglePause" v-else>
+                ▶️ 继续
+              </button>
+              <button class="btn-executor stop" @click="stopAutoExecutor">
+                ⏹️ 结束今天任务
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <!-- 今日完成率快速统计 -->
+        <div class="daily-stats-mini" v-if="visitedToday > 0">
+          <div class="mini-stat">
+            <span class="mini-num">{{ visitedToday }}</span>
+            <span class="mini-label">已访问</span>
+          </div>
+          <div class="mini-stat">
+            <span class="mini-num">{{ skippedToday }}</span>
+            <span class="mini-label">已跳过</span>
+          </div>
+          <div class="mini-stat">
+            <span class="mini-num">{{ todayQueue.length - visitedToday - skippedToday }}</span>
+            <span class="mini-label">队列剩余</span>
+          </div>
+          <div class="mini-stat">
+            <span class="mini-num">{{ sessionDuration }}</span>
+            <span class="mini-label">本次耗时</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 潜客队列管理 ===== -->
+      <div class="queue-section">
+        <h3>📋 潜客队列管理</h3>
+
+        <!-- 导入区 -->
+        <div class="import-area">
+          <div class="import-tabs">
+            <button class="import-tab" :class="{active: importMode === 'url'}" @click="importMode='url'">🔗 批量导入 URL</button>
+            <button class="import-tab" :class="{active: importMode === 'manual'}" @click="importMode='manual'">✏️ 手动添加</button>
+          </div>
+
+          <!-- URL 批量导入 -->
+          <div v-if="importMode === 'url'" class="import-url">
+            <p class="import-desc">粘贴多个 LinkedIn 个人主页 URL，每行一个：</p>
+            <textarea v-model="bulkUrls" placeholder="https://www.linkedin.com/in/john-smith/
+https://www.linkedin.com/in/sarah-johnson/
+https://www.linkedin.com/in/michael-brown/
+..." rows="6"></textarea>
+            <div class="import-actions">
+              <button class="btn-import" @click="importFromUrls">📥 导入到队列</button>
+              <button class="btn-clear-queue" @click="clearQueue">🗑️ 清空队列</button>
+            </div>
+          </div>
+
+          <!-- 手动添加 -->
+          <div v-if="importMode === 'manual'" class="import-manual">
+            <div class="manual-row">
+              <input v-model="manualName" placeholder="姓名（如 John Smith）" />
+              <input v-model="manualUrl" placeholder="LinkedIn URL（可选）" />
+              <select v-model="manualRole">
+                <option value="">无备注</option>
+                <option value="Purchasing Manager">Purchasing Manager</option>
+                <option value="CEO">CEO</option>
+                <option value="Founder">Founder</option>
+                <option value="CTO">CTO</option>
+                <option value="VP Sales">VP Sales</option>
+              </select>
+              <button class="btn-add-manual" @click="addManualProspect">添加</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 队列列表 -->
+        <div v-if="todayQueue.length > 0" class="queue-list">
+          <div class="queue-header">
+            <strong>今日队列</strong>
+            <span class="queue-count">共 {{ todayQueue.length }} 位潜客</span>
+          </div>
+          <div class="queue-items">
+            <div v-for="(p, idx) in todayQueue" :key="idx"
+              class="queue-item" :class="{visited: p.status === 'visited', skipped: p.status === 'skipped', current: idx === currentQueueIndex && autoRunning}">
+              <div class="queue-item-left">
+                <span class="queue-idx">{{ idx + 1 }}</span>
+                <span class="queue-status-icon">
+                  {{ p.status === 'visited' ? '✅' : p.status === 'skipped' ? '⏭️' : p.status === 'current' ? '👁️' : '⬜' }}
+                </span>
+                <div class="queue-item-info">
+                  <strong>{{ p.name }}</strong>
+                  <small v-if="p.role">{{ p.role }}</small>
+                  <small v-if="p.url" class="queue-url">{{ truncateUrl(p.url) }}</small>
+                </div>
+              </div>
+              <div class="queue-item-right">
+                <a v-if="p.url" :href="p.url" target="_blank" class="queue-link">打开</a>
+                <button v-if="p.status === 'pending'" class="queue-remove" @click="removeFromQueue(idx)">×</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="empty-state">
+          <p>队列为空。请通过上方导入 LinkedIn URL 或手动添加潜客。</p>
+          <p class="empty-tip">提示：在 LinkedIn 搜索结果页面，复制目标用户的 URL 粘贴到批量导入框中。</p>
+        </div>
+      </div>
+
+      <!-- ===== 每日计划配置 ===== -->
       <div class="plan-config">
+        <h3>📅 每日访问计划</h3>
         <div class="config-row">
           <div class="config-item">
             <label>每日访问数量</label>
@@ -302,6 +486,49 @@
           <strong>执行时间线：</strong>
           每次访问停留 {{ visitInterval }}秒，{{ dailyTarget }} 次访问总计约 {{ estimatedMinutes }} 分钟。
           建议{{ workdayNames }}的 {{ startTime }}-{{ endTime }} 执行。
+        </div>
+      </div>
+
+      <!-- ===== 历史统计仪表盘 ===== -->
+      <div class="history-section">
+        <h4>📈 访问历史统计</h4>
+
+        <!-- 本周概览 -->
+        <div class="week-overview">
+          <div class="week-chart">
+            <div v-for="(day, idx) in weekData" :key="idx" class="week-bar-col">
+              <div class="week-bar-track">
+                <div class="week-bar-fill" :style="{height: day.height + '%'}" :class="dayClass(day.count)"></div>
+              </div>
+              <div class="week-bar-val">{{ day.count }}</div>
+              <div class="week-bar-label">{{ day.label }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="history-stats">
+          <div class="hist-stat">
+            <div class="hist-num">{{ totalVisitedAll }}</div>
+            <div class="hist-label">累计访问</div>
+          </div>
+          <div class="hist-stat">
+            <div class="hist-num">{{ totalDaysActive }}</div>
+            <div class="hist-label">活跃天数</div>
+          </div>
+          <div class="hist-stat">
+            <div class="hist-num">{{ avgDaily }}</div>
+            <div class="hist-label">日均访问</div>
+          </div>
+          <div class="hist-stat">
+            <div class="hist-num">{{ streakDays }}</div>
+            <div class="hist-label">连续天数</div>
+          </div>
+        </div>
+
+        <!-- 导出 -->
+        <div class="history-actions">
+          <button class="btn-export" @click="exportHistory">📥 导出历史记录 (CSV)</button>
+          <button class="btn-clear-history" @click="clearHistory">🗑️ 清除历史</button>
         </div>
       </div>
 
@@ -398,7 +625,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 
 const step = ref(1)
 
@@ -516,25 +743,21 @@ const generateSearchQuery = () => {
 
   let parts = []
 
-  // 岗位
   if (targetRoles.value.length > 0) {
     const roleStr = targetRoles.value.map(r => `"${r}"`).join(' OR ')
     parts.push(`(${roleStr})`)
   }
 
-  // 行业
   if (targetIndustries.value.length > 0) {
     const indStr = targetIndustries.value.map(i => `"${i}"`).join(' OR ')
     parts.push(`(${indStr})`)
   }
 
-  // 地区
   if (targetRegions.value.length > 0) {
     const regStr = targetRegions.value.join(' OR ')
     parts.push(`(${regStr})`)
   }
 
-  // 活跃度
   const activityMap = {
     active_7: 'Posts in last 7 days',
     active_30: 'Posts in last 30 days',
@@ -542,7 +765,6 @@ const generateSearchQuery = () => {
     any: '',
   }
   if (activityFilter.value !== 'any') {
-    // LinkedIn Sales Navigator 语法
     parts.push(`FILTER_ACTIVITY("${activityMap[activityFilter.value]}")`)
   }
 
@@ -555,7 +777,6 @@ const copyText = (text) => {
 }
 
 const openLinkedInSearch = () => {
-  // 生成 LinkedIn 搜索 URL
   const roles = targetRoles.value.join(' OR ')
   const industries = targetIndustries.value.join(' OR ')
   const query = `${roles} ${industries}`.trim()
@@ -563,7 +784,13 @@ const openLinkedInSearch = () => {
   window.open(url, '_blank')
 }
 
-// ===== 第三步数据 =====
+// ===== 第三步：自动化执行器 =====
+const STORAGE_KEY = 'lk_visiting_auto'
+const HISTORY_KEY = 'lk_visiting_history'
+const RETURN_VISITORS_KEY = 'lk_return_visitors'
+const FUNNEL_KEY = 'lk_funnel_data'
+
+// 计划配置
 const dailyTarget = ref(40)
 const visitInterval = ref(90)
 const startTime = ref('09:00')
@@ -580,6 +807,358 @@ const toggleWeekday = (idx) => {
   if (pos >= 0) workdays.value.splice(pos, 1)
   else workdays.value.push(idx)
   workdays.value.sort()
+}
+
+// 队列管理
+const todayQueue = ref([])
+const importMode = ref('url')
+const bulkUrls = ref('')
+const manualName = ref('')
+const manualUrl = ref('')
+const manualRole = ref('')
+
+const todayKey = () => new Date().toISOString().slice(0, 10)
+
+const extractNameFromUrl = (url) => {
+  try {
+    const u = new URL(url.trim())
+    const parts = u.pathname.split('/').filter(Boolean)
+    if (parts.length >= 2 && parts[0] === 'in') {
+      return parts[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    }
+  } catch {}
+  return ''
+}
+
+const truncateUrl = (url) => {
+  if (!url) return ''
+  return url.length > 50 ? url.slice(0, 50) + '...' : url
+}
+
+const importFromUrls = () => {
+  const lines = bulkUrls.value.split('\n').map(l => l.trim()).filter(l => l)
+  if (lines.length === 0) { alert('请粘贴至少一个 URL'); return }
+
+  let added = 0
+  lines.forEach(line => {
+    if (!todayQueue.value.some(p => p.url === line)) {
+      todayQueue.value.push({
+        name: extractNameFromUrl(line) || '未命名',
+        url: line,
+        role: '',
+        status: 'pending',
+        addedAt: Date.now(),
+      })
+      added++
+    }
+  })
+
+  bulkUrls.value = ''
+  saveTodayQueue()
+  alert(`成功导入 ${added} 位潜客到队列（${lines.length - added} 个重复已跳过）`)
+}
+
+const addManualProspect = () => {
+  if (!manualName.value.trim()) { alert('请输入姓名'); return }
+  todayQueue.value.push({
+    name: manualName.value.trim(),
+    url: manualUrl.value.trim() || '',
+    role: manualRole.value || '',
+    status: 'pending',
+    addedAt: Date.now(),
+  })
+  manualName.value = ''
+  manualUrl.value = ''
+  manualRole.value = ''
+  saveTodayQueue()
+}
+
+const removeFromQueue = (idx) => {
+  todayQueue.value.splice(idx, 1)
+  saveTodayQueue()
+}
+
+const clearQueue = () => {
+  if (todayQueue.value.length === 0) return
+  if (confirm('确定清空所有队列？已访问的记录不会被删除。')) {
+    todayQueue.value = []
+    saveTodayQueue()
+  }
+}
+
+// 自动化执行状态
+const autoRunning = ref(false)
+const autoPaused = ref(false)
+const currentQueueIndex = ref(0)
+const countdown = ref(0)
+let countdownTimer = null
+let sessionStart = null
+
+const currentProspect = computed(() => {
+  if (!autoRunning.value && !autoPaused.value) return null
+  // Find next pending in queue
+  const pending = todayQueue.value.findIndex((p, i) => p.status === 'pending')
+  if (pending >= 0) return todayQueue.value[pending]
+  return null
+})
+
+const visitedToday = computed(() => todayQueue.value.filter(p => p.status === 'visited').length)
+const skippedToday = computed(() => todayQueue.value.filter(p => p.status === 'skipped').length)
+const progressPercent = computed(() => {
+  if (dailyTarget.value === 0) return 0
+  return Math.min(Math.round(visitedToday.value / dailyTarget.value * 100), 100)
+})
+
+const countdownDisplay = computed(() => {
+  const m = Math.floor(countdown.value / 60)
+  const s = countdown.value % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+})
+
+const countdownOffset = computed(() => {
+  if (visitInterval.value === 0) return 0
+  const progress = 1 - countdown.value / visitInterval.value
+  return 283 * (1 - progress)
+})
+
+const sessionDuration = computed(() => {
+  if (!sessionStart) return '00:00'
+  const elapsed = Math.floor((Date.now() - sessionStart) / 1000)
+  const m = Math.floor(elapsed / 60)
+  const s = elapsed % 60
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+})
+
+const startAutoExecutor = () => {
+  if (todayQueue.value.length === 0) { alert('队列中没有潜客，请先导入'); return }
+
+  autoRunning.value = true
+  autoPaused.value = false
+  sessionStart = Date.now()
+
+  // Mark first pending as current
+  const firstPending = todayQueue.value.findIndex(p => p.status === 'pending')
+  if (firstPending >= 0) {
+    todayQueue.value[firstPending].status = 'current'
+    currentQueueIndex.value = firstPending
+  }
+
+  startCountdown()
+  saveTodayQueue()
+}
+
+const startCountdown = () => {
+  clearInterval(countdownTimer)
+  countdown.value = visitInterval.value
+
+  countdownTimer = setInterval(() => {
+    if (autoPaused.value) return
+    countdown.value--
+
+    if (countdown.value <= 0) {
+      countdown.value = visitInterval.value
+      // Play notification sound (visual flash since audio needs user gesture)
+      if (Notification.permission === 'granted') {
+        new Notification('LinkedIn 访客提醒', {
+          body: '时间到！请完成当前浏览后点击「已完成」，准备访问下一位潜客。',
+          icon: '🚀'
+        })
+      }
+    }
+  }, 1000)
+}
+
+const markCurrentDone = () => {
+  const current = todayQueue.value.find(p => p.status === 'current')
+  if (current) {
+    current.status = 'visited'
+    logVisit(current)
+  }
+
+  // Move to next pending
+  const next = todayQueue.value.findIndex(p => p.status === 'pending')
+  if (next >= 0 && visitedToday.value < dailyTarget.value) {
+    todayQueue.value[next].status = 'current'
+    currentQueueIndex.value = next
+    countdown.value = visitInterval.value
+  } else {
+    // All done or reached target
+    if (visitedToday.value >= dailyTarget.value) {
+      stopAutoExecutor()
+      alert(`🎉 今日目标达成！已访问 ${visitedToday.value} 位潜客。`)
+    }
+  }
+  saveTodayQueue()
+}
+
+const skipCurrent = () => {
+  const current = todayQueue.value.find(p => p.status === 'current')
+  if (current) {
+    current.status = 'skipped'
+  }
+
+  const next = todayQueue.value.findIndex(p => p.status === 'pending')
+  if (next >= 0) {
+    todayQueue.value[next].status = 'current'
+    currentQueueIndex.value = next
+    countdown.value = visitInterval.value
+  } else {
+    stopAutoExecutor()
+    alert('队列已清空。')
+  }
+  saveTodayQueue()
+}
+
+const togglePause = () => {
+  autoPaused.value = !autoPaused.value
+}
+
+const stopAutoExecutor = () => {
+  clearInterval(countdownTimer)
+  autoRunning.value = false
+  autoPaused.value = false
+
+  // Reset any 'current' back to 'pending'
+  todayQueue.value.forEach(p => {
+    if (p.status === 'current') p.status = 'pending'
+  })
+
+  sessionStart = null
+  saveTodayQueue()
+}
+
+// 历史记录
+const visitHistory = ref([])
+
+const logVisit = (prospect) => {
+  const entry = {
+    name: prospect.name,
+    url: prospect.url,
+    role: prospect.role,
+    timestamp: Date.now(),
+    date: todayKey(),
+  }
+  visitHistory.value.push(entry)
+  saveHistory()
+}
+
+const totalVisitedAll = computed(() => visitHistory.value.length)
+const totalDaysActive = computed(() => new Set(visitHistory.value.map(v => v.date)).size)
+const avgDaily = computed(() => {
+  if (totalDaysActive.value === 0) return 0
+  return Math.round(totalVisitedAll.value / totalDaysActive.value)
+})
+
+const streakDays = computed(() => {
+  let streak = 0
+  const d = new Date()
+  while (true) {
+    const key = d.toISOString().slice(0, 10)
+    if (visitHistory.value.some(v => v.date === key)) {
+      streak++
+      d.setDate(d.getDate() - 1)
+    } else {
+      break
+    }
+  }
+  return streak
+})
+
+const weekData = computed(() => {
+  const dayNames = ['日', '一', '二', '三', '四', '五', '六']
+  const result = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    const key = d.toISOString().slice(0, 10)
+    const count = visitHistory.value.filter(v => v.date === key).length
+    result.push({
+      label: dayNames[d.getDay()],
+      count,
+      height: count === 0 ? 4 : Math.min(Math.round(count / dailyTarget.value * 100), 100),
+    })
+  }
+  return result
+})
+
+const dayClass = (count) => {
+  if (count === 0) return 'zero'
+  if (count < dailyTarget.value * 0.5) return 'low'
+  if (count < dailyTarget.value) return 'ok'
+  return 'good'
+}
+
+const exportHistory = () => {
+  if (visitHistory.value.length === 0) { alert('暂无历史记录'); return }
+  const header = '日期,姓名,URL,岗位,时间\n'
+  const rows = visitHistory.value.map(v =>
+    `${v.date},"${v.name}","${v.url || ''}","${v.role || ''}",${new Date(v.timestamp).toLocaleString('zh-CN')}`
+  ).join('\n')
+  const csv = '\uFEFF' + header + rows // BOM for Excel
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `linkedin-visiting-history-${todayKey()}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const clearHistory = () => {
+  if (confirm('确定清除所有历史记录？此操作不可恢复。')) {
+    visitHistory.value = []
+    localStorage.removeItem(HISTORY_KEY)
+  }
+}
+
+// localStorage 持久化
+const saveTodayQueue = () => {
+  const data = {
+    date: todayKey(),
+    queue: todayQueue.value,
+    dailyTarget: dailyTarget.value,
+    visitInterval: visitInterval.value,
+    startTime: startTime.value,
+    endTime: endTime.value,
+    workdays: workdays.value,
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+}
+
+const loadTodayQueue = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const data = JSON.parse(raw)
+      // Only load if today's data
+      if (data.date === todayKey()) {
+        todayQueue.value = data.queue || []
+        dailyTarget.value = data.dailyTarget || 40
+        visitInterval.value = data.visitInterval || 90
+        startTime.value = data.startTime || '09:00'
+        endTime.value = data.endTime || '17:00'
+        workdays.value = data.workdays || [1, 2, 3, 4, 5]
+      } else {
+        // Old data, reset queue but keep config
+        dailyTarget.value = data.dailyTarget || 40
+        visitInterval.value = data.visitInterval || 90
+        startTime.value = data.startTime || '09:00'
+        endTime.value = data.endTime || '17:00'
+        workdays.value = data.workdays || [1, 2, 3, 4, 5]
+      }
+    }
+  } catch {}
+}
+
+const saveHistory = () => {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(visitHistory.value))
+}
+
+const loadHistory = () => {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY)
+    if (raw) visitHistory.value = JSON.parse(raw)
+  } catch {}
 }
 
 // 回访追踪
@@ -610,6 +1189,14 @@ const addReturnVisitor = () => {
     status: 'pending',
   })
   newVisitor.value = ''
+  localStorage.setItem(RETURN_VISITORS_KEY, JSON.stringify(returnVisitors.value))
+}
+
+const loadReturnVisitors = () => {
+  try {
+    const raw = localStorage.getItem(RETURN_VISITORS_KEY)
+    if (raw) returnVisitors.value = JSON.parse(raw)
+  } catch {}
 }
 
 // 转化漏斗
@@ -623,12 +1210,51 @@ const funnelSteps = ref([
 ])
 
 const updateFunnel = () => {
-  // 自动计算每层宽度（基于最大值）
   const maxVal = Math.max(...funnelSteps.value.map(f => f.count), 1)
   funnelSteps.value.forEach(f => {
     f.width = Math.max(Math.round(f.count / maxVal * 100), 10)
   })
+  localStorage.setItem(FUNNEL_KEY, JSON.stringify(funnelSteps.value))
 }
+
+const loadFunnel = () => {
+  try {
+    const raw = localStorage.getItem(FUNNEL_KEY)
+    if (raw) {
+      const data = JSON.parse(raw)
+      funnelSteps.value = data
+    }
+  } catch {}
+}
+
+// 监听回访者变更持久化
+watch(returnVisitors, (val) => {
+  localStorage.setItem(RETURN_VISITORS_KEY, JSON.stringify(val))
+}, { deep: true })
+
+// 请求通知权限
+onMounted(() => {
+  loadTodayQueue()
+  loadHistory()
+  loadReturnVisitors()
+  loadFunnel()
+
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission()
+  }
+})
+
+onUnmounted(() => {
+  clearInterval(countdownTimer)
+})
+
+// Auto-sync funnel steps[0] count with total visited
+watch(totalVisitedAll, (val) => {
+  if (funnelSteps.value[0].count < val) {
+    funnelSteps.value[0].count = val
+    updateFunnel()
+  }
+})
 </script>
 
 <style scoped>
@@ -1044,7 +1670,436 @@ h4 {
   margin-right: 8px;
 }
 
-/* ===== 第三步：自动化计划 ===== */
+/* ===== 第三步：自动化执行器 ===== */
+.auto-executor {
+  background: linear-gradient(135deg, #f8f9ff, #f0f4ff);
+  padding: 24px;
+  border-radius: 14px;
+  border: 2px solid #d0dcff;
+  margin-bottom: 24px;
+  transition: all 0.3s;
+}
+.auto-executor.running {
+  border-color: #0a66c2;
+  background: linear-gradient(135deg, #f0f7ff, #e3f2fd);
+  box-shadow: 0 4px 20px rgba(10,102,194,0.15);
+}
+
+.executor-control {
+  display: flex;
+  gap: 24px;
+  align-items: stretch;
+}
+.control-main {
+  flex: 1;
+}
+
+.current-target {
+  margin-bottom: 16px;
+}
+.target-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.target-counter strong {
+  font-size: 24px;
+  color: #0a66c2;
+}
+.target-counter small {
+  display: block;
+  font-size: 12px;
+  color: #888;
+}
+.target-status {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2e7d32;
+}
+.target-status.paused {
+  color: #f57f17;
+}
+
+/* Progress Bar */
+.progress-bar-track {
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0a66c2, #42a5f5);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 16px;
+}
+
+/* Current Prospect Card */
+.current-prospect-card {
+  background: white;
+  padding: 16px;
+  border-radius: 10px;
+  border: 2px solid #0a66c2;
+  margin-bottom: 16px;
+  text-align: center;
+}
+.prospect-number {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 4px;
+}
+.prospect-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 8px;
+}
+.visit-link {
+  display: inline-block;
+  background: #0a66c2;
+  color: white;
+  padding: 10px 24px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+.visit-link:hover {
+  background: #004182;
+}
+
+/* Countdown */
+.countdown-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+}
+.countdown-ring {
+  position: relative;
+  width: 100px;
+  height: 100px;
+}
+.countdown-ring svg {
+  width: 100%;
+  height: 100%;
+}
+.countdown-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 22px;
+  font-weight: 800;
+  color: #0a66c2;
+}
+.countdown-label {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #888;
+}
+
+/* Idle State */
+.idle-state {
+  text-align: center;
+  padding: 32px 16px;
+}
+.idle-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+.idle-text {
+  color: #888;
+  font-size: 14px;
+}
+
+/* Control Actions */
+.control-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 200px;
+}
+.btn-executor {
+  padding: 12px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-executor:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-executor.start {
+  background: linear-gradient(135deg, #2e7d32, #43a047);
+  color: white;
+}
+.btn-executor.start:hover:not(:disabled) { background: linear-gradient(135deg, #1b5e20, #2e7d32); }
+.btn-executor.done {
+  background: linear-gradient(135deg, #0a66c2, #1565c0);
+  color: white;
+}
+.btn-executor.done:hover { background: linear-gradient(135deg, #004182, #0a66c2); }
+.btn-executor.skip {
+  background: white;
+  color: #666;
+  border: 1px solid #ddd;
+}
+.btn-executor.skip:hover { background: #f5f5f5; }
+.btn-executor.pause {
+  background: white;
+  color: #f57f17;
+  border: 1px solid #f57f17;
+}
+.btn-executor.resume {
+  background: linear-gradient(135deg, #2e7d32, #43a047);
+  color: white;
+}
+.btn-executor.stop {
+  background: white;
+  color: #d93025;
+  border: 1px solid #d93025;
+}
+.btn-executor.stop:hover { background: #ffebee; }
+
+/* Daily Mini Stats */
+.daily-stats-mini {
+  display: flex;
+  gap: 16px;
+  padding: 12px 16px;
+  background: rgba(10,102,194,0.06);
+  border-radius: 8px;
+  margin-top: 12px;
+}
+.mini-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+.mini-num {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0a66c2;
+}
+.mini-label {
+  font-size: 11px;
+  color: #888;
+}
+
+/* ===== Queue Management ===== */
+.queue-section {
+  margin-bottom: 24px;
+}
+.import-area {
+  background: #f8f9fa;
+  padding: 16px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+.import-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.import-tab {
+  padding: 8px 16px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  transition: all 0.2s;
+}
+.import-tab.active {
+  background: #0a66c2;
+  color: white;
+  border-color: #0a66c2;
+}
+.import-desc {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 8px;
+}
+.import-url textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: monospace;
+  resize: vertical;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+.import-actions {
+  display: flex;
+  gap: 8px;
+}
+.btn-import {
+  background: linear-gradient(135deg, #0a66c2, #004182);
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.btn-clear-queue {
+  background: white;
+  color: #d93025;
+  border: 1px solid #d93025;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.import-manual .manual-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.manual-row input {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.manual-row select {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.btn-add-manual {
+  background: #0a66c2;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* Queue List */
+.queue-list {
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.queue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f0f0f0;
+  font-size: 14px;
+}
+.queue-count {
+  font-size: 12px;
+  color: #888;
+  font-weight: 400;
+}
+.queue-items {
+  max-height: 300px;
+  overflow-y: auto;
+}
+.queue-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background 0.2s;
+}
+.queue-item:hover { background: #f8f9fa; }
+.queue-item.visited { opacity: 0.5; }
+.queue-item.skipped { opacity: 0.3; text-decoration: line-through; }
+.queue-item.current { background: #e3f2fd; border-left: 3px solid #0a66c2; }
+.queue-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.queue-idx {
+  font-size: 12px;
+  color: #aaa;
+  min-width: 20px;
+}
+.queue-status-icon {
+  font-size: 14px;
+}
+.queue-item-info {
+  min-width: 0;
+}
+.queue-item-info strong {
+  display: block;
+  font-size: 13px;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queue-item-info small {
+  display: block;
+  font-size: 11px;
+  color: #999;
+}
+.queue-url {
+  font-family: monospace;
+  color: #0a66c2 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queue-item-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.queue-link {
+  font-size: 12px;
+  color: #0a66c2;
+  text-decoration: none;
+  padding: 2px 8px;
+  border: 1px solid #0a66c2;
+  border-radius: 4px;
+}
+.queue-link:hover { background: #0a66c2; color: white; }
+.queue-remove {
+  background: none;
+  border: none;
+  color: #d93025;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 4px;
+  opacity: 0.6;
+}
+.queue-remove:hover { opacity: 1; }
+
+/* ===== Plan Config ===== */
 .plan-config {
   background: #f8f9fa;
   padding: 20px;
@@ -1150,6 +2205,108 @@ h4 {
   padding: 12px;
   border-radius: 8px;
   border: 1px solid #eee;
+}
+
+/* ===== History Section ===== */
+.history-section {
+  margin-bottom: 24px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 10px;
+}
+
+.week-overview {
+  margin-bottom: 16px;
+}
+.week-chart {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  height: 120px;
+  padding: 0 8px;
+}
+.week-bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+.week-bar-track {
+  width: 32px;
+  height: 80px;
+  background: #e8e8e8;
+  border-radius: 4px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+.week-bar-fill {
+  width: 100%;
+  border-radius: 4px;
+  transition: height 0.5s ease;
+  min-height: 4px;
+}
+.week-bar-fill.good { background: #2e7d32; }
+.week-bar-fill.ok { background: #f57f17; }
+.week-bar-fill.low { background: #ff9800; }
+.week-bar-fill.zero { background: #e0e0e0; }
+.week-bar-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: #555;
+}
+.week-bar-label {
+  font-size: 11px;
+  color: #888;
+}
+
+.history-stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.hist-stat {
+  flex: 1;
+  min-width: 80px;
+  background: white;
+  padding: 12px;
+  border-radius: 8px;
+  text-align: center;
+  border: 1px solid #eee;
+}
+.hist-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0a66c2;
+}
+.hist-label {
+  font-size: 11px;
+  color: #888;
+}
+
+.history-actions {
+  display: flex;
+  gap: 8px;
+}
+.btn-export {
+  background: white;
+  color: #0a66c2;
+  border: 1px solid #0a66c2;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.btn-clear-history {
+  background: white;
+  color: #d93025;
+  border: 1px solid #d93025;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
 }
 
 /* Tracker */
@@ -1306,5 +2463,9 @@ h4 {
   .config-row { grid-template-columns: 1fr 1fr; }
   .plan-stats { flex-direction: column; }
   .funnel-form { grid-template-columns: 1fr; }
+  .executor-control { flex-direction: column; }
+  .control-actions { flex-direction: row; flex-wrap: wrap; }
+  .manual-row { flex-direction: column; }
+  .import-manual .manual-row input { min-width: 100%; }
 }
 </style>
